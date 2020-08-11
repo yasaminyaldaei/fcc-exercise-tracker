@@ -19,40 +19,64 @@ app.get('/', (req, res) => {
 });
 
 const usersSchema = new mongoose.Schema({
-  _id: {type: String},
-  username: {type: String}
-})
+  username: {type: String, unique: true, required: true},
+  exercises: []
+},  { versionKey: false })
 
 
 const Users = mongoose.model("users", usersSchema)
-const collection = mongoose.connection.collection("users")
 
 app.post("/api/exercise/new-user", (req, res) => {
   const username = req.body.username
-  if (username === "" || username.length === 0) {
-    res.send("Must provide a username")
-  }
-  
-  collection.findOne({
+  Users.create({
     username: username
   }, (err, doc) => {
-    if (err) res.send(err)
-    if (doc !== null) {
-      res.send("Username already taken")
-    } else {
-      collection.insertOne({
-        username: username
-      }, (err, doc) => {
-        if (err) res.send(err)
-        res.send(doc.ops[0])
-      })
+    if (err) {
+      if (err.code === 11000) {
+        return res.send({
+          code: err.code,
+          message: "Username already taken"
+        })
+      }
+      else {
+        return res.send({
+          message: err.message
+        })
+      }
     }
+    return res.send(doc)
   })
-  
 })
 
 app.get("/api/exercise/users", (req, res) => {
   Users.find({}, (err, doc) => {
+    if (err) return res.send({
+      message: err.message
+    })
+    return res.send(doc)
+  })
+})
+
+const getCurrentStringDate = () => {
+  const currentDate = new Date()
+  return currentDate.getFullYear() + "-" + currentDate.getMonth() + "-" + currentDate.getDay()
+}
+
+app.post("/api/exercise/add", (req, res) => {
+  const { userId, description, duration, date } = req.body;
+  Users.findOneAndUpdate({
+    _id: userId,
+  }, { $push: {
+        exercises: {
+          description,
+          duration,
+          date: date || getCurrentStringDate()
+        }
+      }
+  }, { upsert: true, new: true }, (err, doc) => {
+    if (err) return res.send({
+      message: err.message
+    })
     res.send(doc)
   })
 })

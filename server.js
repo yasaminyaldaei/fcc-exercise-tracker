@@ -20,7 +20,8 @@ app.get('/', (req, res) => {
 
 const usersSchema = new mongoose.Schema({
   username: {type: String, unique: true, required: true},
-  exercises: []
+  exercises: [],
+  count: {type: Number}
 },  { versionKey: false })
 
 
@@ -71,9 +72,31 @@ app.post("/api/exercise/add", (req, res) => {
           description,
           duration,
           date: date || getCurrentStringDate()
-        }
+        },
+      }}, { upsert: true, new: true }, (err, doc) => {
+    if (err) return res.send({
+      message: err.message
+    })
+    Users.findOneAndUpdate({
+      _id: userId,
+    }, { $set: {
+          count: doc.exercises.length || 0
       }
-  }, { upsert: true, new: true }, (err, doc) => {
+     }, { upsert: true, new: true }, (err, doc) => {
+      if (err) return res.send({
+      message: err.message
+    })
+      res.send(doc)
+    })
+  })
+})
+
+app.get("/api/exercise/log", (req, res) => {
+  const userId = req.query._id
+  
+  Users.findOne({
+    _id: userId
+  }, (err, doc) => {
     if (err) return res.send({
       message: err.message
     })

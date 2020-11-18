@@ -5,6 +5,7 @@ const bodyParser = require('body-parser')
 const cors = require('cors')
 
 const mongoose = require('mongoose')
+const ObjectID = require("mongodb").ObjectID;
 mongoose.connect(process.env.MLAB_URI || 'mongodb://localhost/exercise-track' )
 
 app.use(cors())
@@ -60,7 +61,7 @@ app.get("/api/exercise/users", (req, res) => {
 
 const getCurrentStringDate = () => {
   const currentDate = new Date()
-  return currentDate.getFullYear() + "-" + currentDate.getMonth() + "-" + currentDate.getDay()
+  return currentDate.getFullYear() + "-" + ("0" + (currentDate.getMonth() + 1)).slice(-2) + "-" + ("0" + currentDate.getDay()).slice(-2)
 }
 
 app.post("/api/exercise/add", (req, res) => {
@@ -71,7 +72,7 @@ app.post("/api/exercise/add", (req, res) => {
         exercises: {
           description,
           duration,
-          date: date || getCurrentStringDate()
+          date: new Date(date || getCurrentStringDate())
         },
       }}, { upsert: true, new: true }, (err, doc) => {
     if (err) return res.send({
@@ -92,11 +93,39 @@ app.post("/api/exercise/add", (req, res) => {
 })
 
 app.get("/api/exercise/log", (req, res) => {
-  const userId = req.query._id
+  const userId = new ObjectID(req.query.userId)
+  const from = req.query.from ? new Date(req.query.from) : null
+  const to = req.query.to ? new Date(req.query.to) : null
+  const limit = req.query.limit
   
-  Users.findOne({
-    _id: userId
-  }, (err, doc) => {
+  let pipeline = [{ $match: { _id: userId }}];
+  if (limit) {
+    pipeline.push({
+      $project: {
+        exercises: {
+          $slice: ["$exercises", 0, +limit]
+        }
+      }
+    })
+  }
+  if (from || to) {
+    pipeline.push({
+      $project: {
+        exercises: {
+          $filter: {
+            input: "$exercises",
+            as: "exercise",
+            cond: { $and: [
+              { $gte: [ "$$exercise.date", from] },
+              { $lte: ["$$exercise.date", to] },
+            ]}
+          }
+        }
+      }
+    })
+  }  
+  
+  Users.aggregate(pipeline, (err, doc) => {
     if (err) return res.send({
       message: err.message
     })

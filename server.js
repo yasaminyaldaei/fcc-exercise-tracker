@@ -78,16 +78,12 @@ app.post("/api/exercise/add", (req, res) => {
     if (err) return res.send({
       message: err.message
     })
-    Users.findOneAndUpdate({
-      _id: userId,
-    }, { $set: {
-          count: doc.exercises.length || 0
-      }
-     }, { upsert: true, new: true }, (err, doc) => {
-      if (err) return res.send({
-      message: err.message
-    })
-      res.send(doc)
+    res.send({
+        "_id": doc._id,
+        "username": doc.username,
+        "date": new Date(date || getCurrentStringDate()),
+        duration,
+        description
     })
   })
 })

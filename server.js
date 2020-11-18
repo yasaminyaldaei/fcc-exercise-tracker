@@ -21,7 +21,7 @@ app.get('/', (req, res) => {
 
 const usersSchema = new mongoose.Schema({
   username: {type: String, unique: true, required: true},
-  exercises: [],
+  log: [],
   count: {type: Number}
 },  { versionKey: false })
 
@@ -46,7 +46,10 @@ app.post("/api/exercise/new-user", (req, res) => {
         })
       }
     }
-    return res.send(doc)
+    return res.send({
+      _id: doc._id,
+      username: doc.username
+    })
   })
 })
 
@@ -59,32 +62,29 @@ app.get("/api/exercise/users", (req, res) => {
   })
 })
 
-const getCurrentStringDate = () => {
-  const currentDate = new Date()
-  return currentDate.getFullYear() + "-" + ("0" + (currentDate.getMonth() + 1)).slice(-2) + "-" + ("0" + currentDate.getDay()).slice(-2)
-}
-
 app.post("/api/exercise/add", (req, res) => {
   const { userId, description, duration, date } = req.body;
+  const dateString = date ? new Date(date) : new Date()
   Users.findOneAndUpdate({
     _id: userId,
   }, { $push: {
-        exercises: {
+        log: {
           description,
           duration,
-          date: new Date(date || getCurrentStringDate())
+          date: dateString,
         },
       }}, { upsert: true, new: true }, (err, doc) => {
     if (err) return res.send({
       message: err.message
     })
-    res.send({
-        "_id": doc._id,
+    const result = {
+        "_id": "" + doc._id,
         "username": doc.username,
-        "date": new Date(date || getCurrentStringDate()),
-        duration,
+        "date": dateString.toDateString(),
+        duration: +duration,
         description
-    })
+    }
+    res.send(result)
   })
 })
 
@@ -94,38 +94,54 @@ app.get("/api/exercise/log", (req, res) => {
   const to = req.query.to ? new Date(req.query.to) : null
   const limit = req.query.limit
   
-  let pipeline = [{ $match: { _id: userId }}];
+  let pipeline = [
+    { 
+      $match: { _id: userId }
+    }, 
+    {
+      $project: {
+        log: 1,
+        count: {
+          $size: "$log"
+        }
+      }
+    }
+  ];
   if (limit) {
     pipeline.push({
       $project: {
-        exercises: {
-          $slice: ["$exercises", 0, +limit]
+        log: {
+          $slice: ["$log", 0, +limit]
         }
       }
     })
   }
-  if (from || to) {
+  let dateRange = []
+  if (from) {
+    dateRange.push({$gte: [ "$$item.date", from]})
+  }
+  if (to) {
+    dateRange.push({$lte: [ "$$item.date", to]})
+  }
+  if (dateRange.length !== 0) {
     pipeline.push({
       $project: {
-        exercises: {
+        log: {
           $filter: {
-            input: "$exercises",
-            as: "exercise",
-            cond: { $and: [
-              { $gte: [ "$$exercise.date", from] },
-              { $lte: ["$$exercise.date", to] },
-            ]}
+            input: "$log",
+            as: "item",
+            cond: { $and: dateRange }
           }
         }
       }
     })
-  }  
+  } 
   
   Users.aggregate(pipeline, (err, doc) => {
     if (err) return res.send({
       message: err.message
     })
-    res.send(doc)
+    res.send(doc[0])
   })
 })
 
